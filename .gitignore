@@ -1,0 +1,14 @@
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+data/
+models/
+*.db
+*.sqlite3
+.env
+*.onnx
+*.pt
+*.weights
+*.engine
+test-results/

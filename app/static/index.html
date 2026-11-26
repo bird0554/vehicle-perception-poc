@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>车辆感知 POC</title>
+    <style>
+      :root { color-scheme: light; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; color: #1d2a2a; background: #f3f6f5; }
+      * { box-sizing: border-box; }
+      body { margin: 0; }
+      header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px; color: #f7fbfa; background: #153f3c; }
+      header strong { font-size: 16px; }
+      #system-state { color: #c1ded9; font: 13px ui-monospace, monospace; }
+      main { max-width: 1180px; margin: 0 auto; padding: 22px 24px 48px; }
+      .toolbar { display: flex; align-items: end; gap: 12px; padding: 0 0 18px; border-bottom: 1px solid #d4dfdc; }
+      .field { display: grid; gap: 6px; min-width: 0; }
+      label { color: #425553; font-size: 12px; font-weight: 600; }
+      input, select, textarea { width: 100%; min-height: 38px; border: 1px solid #c7d3d0; border-radius: 4px; padding: 8px 10px; color: #172725; background: #fff; font: inherit; }
+      textarea { min-height: 116px; resize: vertical; font: 12px ui-monospace, monospace; }
+      button { min-height: 38px; border: 0; border-radius: 4px; padding: 0 14px; color: white; background: #087e75; font: inherit; font-weight: 600; cursor: pointer; }
+      button:hover { background: #06655f; }
+      button.secondary { color: #23413d; background: #dce9e6; }
+      button:disabled { cursor: not-allowed; opacity: .55; }
+      .columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, .9fr); gap: 28px; padding-top: 20px; }
+      section { min-width: 0; }
+      h2 { margin: 0 0 14px; font-size: 15px; }
+      .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
+      .form-grid .wide { grid-column: 1 / -1; }
+      .actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 14px; }
+      #scan-id { min-height: 38px; display: flex; align-items: center; padding: 0 10px; border: 1px solid #d4dfdc; border-radius: 4px; background: white; color: #47605c; font: 12px ui-monospace, monospace; overflow-wrap: anywhere; }
+      #status { min-height: 20px; margin: 12px 0; color: #45615d; font-size: 13px; }
+      #status.error { color: #a8432f; }
+      pre { min-height: 280px; max-height: 62vh; overflow: auto; margin: 0; border: 1px solid #d4dfdc; border-radius: 4px; padding: 14px; background: #fff; color: #203b38; font: 12px/1.55 ui-monospace, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .calibration { margin-top: 26px; padding-top: 20px; border-top: 1px solid #d4dfdc; }
+      .calibration .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      @media (max-width: 760px) {
+        header { align-items: flex-start; flex-direction: column; padding: 14px 16px; }
+        main { padding: 18px 16px 32px; }
+        .toolbar { align-items: stretch; flex-direction: column; }
+        .columns { grid-template-columns: 1fr; gap: 24px; }
+        .form-grid { grid-template-columns: 1fr; }
+        .form-grid .wide { grid-column: auto; }
+        pre { max-height: 55vh; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>车辆感知 · POC 控制台</strong>
+      <span id="system-state">正在连接</span>
+    </header>
+    <main>
+      <div class="toolbar">
+        <div class="field" style="flex:1">
+          <label for="vehicle-reference">车辆标识</label>
+          <input id="vehicle-reference" maxlength="80" placeholder="可选">
+        </div>
+        <button id="start-scan">新建扫描</button>
+        <div class="field" style="flex:1">
+          <label>当前扫描 ID</label>
+          <div id="scan-id">未创建</div>
+        </div>
+      </div>
+
+      <div class="columns">
+        <section>
+          <h2>采集帧</h2>
+          <form id="frame-form">
+            <div class="form-grid">
+              <div class="field">
+                <label for="camera-id">相机 ID</label>
+                <input id="camera-id" required maxlength="80" value="camera-front">
+              </div>
+              <div class="field">
+                <label for="view">视角</label>
+                <select id="view">
+                  <option value="front">车头</option><option value="rear">车尾</option>
+                  <option value="left">左侧</option><option value="right">右侧</option>
+                  <option value="overhead">顶部</option><option value="other">其他</option>
+                </select>
+              </div>
+              <div class="field wide">
+                <label for="image-file">图像文件</label>
+                <input id="image-file" type="file" accept="image/jpeg,image/png" required>
+              </div>
+            </div>
+            <div class="actions">
+              <button id="upload-frame" type="submit">上传并分析</button>
+              <button id="complete-scan" class="secondary" type="button">完成扫描</button>
+            </div>
+          </form>
+          <div id="status" role="status"></div>
+
+          <form id="calibration-form" class="calibration">
+            <h2>相机地面标定</h2>
+            <div class="form-grid">
+              <div class="field wide">
+                <label for="calibration-camera">相机 ID</label>
+                <input id="calibration-camera" required maxlength="80" value="camera-front">
+              </div>
+              <div class="field">
+                <label for="image-points">图像像素点 JSON</label>
+                <textarea id="image-points" required>[[0,0],[640,0],[640,360],[0,360]]</textarea>
+              </div>
+              <div class="field">
+                <label for="world-points">地面坐标毫米 JSON</label>
+                <textarea id="world-points" required>[[0,0],[32000,0],[32000,18000],[0,18000]]</textarea>
+              </div>
+            </div>
+            <div class="actions"><button class="secondary" type="submit">保存标定</button></div>
+          </form>
+        </section>
+
+        <section>
+          <h2>扫描结果</h2>
+          <pre id="result">等待扫描</pre>
+        </section>
+      </div>
+    </main>
+    <script>
+      let activeScanId = null;
+      const statusElement = document.querySelector("#status");
+      const resultElement = document.querySelector("#result");
+      const scanIdElement = document.querySelector("#scan-id");
+
+      function showStatus(message, isError = false) {
+        statusElement.textContent = message;
+        statusElement.classList.toggle("error", isError);
+      }
+
+      async function request(path, options) {
+        const response = await fetch(path, options);
+        const body = await response.json();
+        if (!response.ok) throw new Error(typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail));
+        return body;
+      }
+
+      document.querySelector("#start-scan").addEventListener("click", async () => {
+        try {
+          const scan = await request("/api/v1/scans", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ vehicle_reference: document.querySelector("#vehicle-reference").value || null, trigger_source: "operator" })
+          });
+          activeScanId = scan.scan_id;
+          scanIdElement.textContent = activeScanId;
+          showStatus("扫描已创建");
+          resultElement.textContent = JSON.stringify(scan, null, 2);
+        } catch (error) { showStatus(error.message, true); }
+      });
+
+      document.querySelector("#frame-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!activeScanId) { showStatus("请先新建扫描", true); return; }
+        const button = document.querySelector("#upload-frame");
+        button.disabled = true;
+        const form = new FormData();
+        form.append("camera_id", document.querySelector("#camera-id").value);
+        form.append("view", document.querySelector("#view").value);
+        form.append("file", document.querySelector("#image-file").files[0]);
+        try {
+          const frame = await request(`/api/v1/scans/${activeScanId}/frames`, { method: "POST", body: form });
+          showStatus(`帧已分析 · ${frame.quality.passed ? "质量通过" : frame.quality.reasons.join(", ")}`);
+          resultElement.textContent = JSON.stringify(frame, null, 2);
+        } catch (error) { showStatus(error.message, true); }
+        finally { button.disabled = false; }
+      });
+
+      document.querySelector("#complete-scan").addEventListener("click", async () => {
+        if (!activeScanId) { showStatus("请先新建扫描", true); return; }
+        try {
+          const scan = await request(`/api/v1/scans/${activeScanId}/complete`, { method: "POST" });
+          resultElement.textContent = JSON.stringify(scan.result, null, 2);
+          showStatus(`扫描状态 · ${scan.status}`);
+        } catch (error) { showStatus(error.message, true); }
+      });
+
+      document.querySelector("#calibration-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        try {
+          const calibration = await request("/api/v1/calibrations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              camera_id: document.querySelector("#calibration-camera").value,
+              image_points_px: JSON.parse(document.querySelector("#image-points").value),
+              world_points_mm: JSON.parse(document.querySelector("#world-points").value)
+            })
+          });
+          showStatus(`标定已保存 · 重投影误差 ${calibration.reprojection_error_mm.toFixed(2)} mm`);
+        } catch (error) { showStatus(error.message, true); }
+      });
+
+      request("/api/v1/system").then((system) => {
+        document.querySelector("#system-state").textContent = system.detector_available ? "检测模型已加载" : `检测模型未就绪 · ${system.detector_reason}`;
+      }).catch(() => { document.querySelector("#system-state").textContent = "服务不可用"; });
+    </script>
+  </body>
+</html>
